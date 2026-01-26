@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+
+    function isServiceAccount() {
+      return isAuthenticated() &&
+             request.auth.token.email != null &&
+             request.auth.token.email.matches('.*\\.iam\\.gserviceaccount\\.com$');
+    }
+
+    function canWrite() {
+      return isAdmin() || isServiceAccount();
+    }
+
+    // Books collection
+    match /books/{bookId} {
+      // Anyone can read published books
+      allow read: if resource.data.status == 'published';
+
+      // Only admins and service accounts can read non-published books
+      allow read: if canWrite();
+
+      // Only admins and service accounts can write
+      allow create, update, delete: if canWrite();
+
+      // Validate book data on write
+      allow create: if canWrite() &&
+        request.resource.data.keys().hasAll([
+          'title', 'ageRange', 'pages', 'status'
+        ]) &&
+        request.resource.data.ageRange in ['3-5', '6-8', '9-12'] &&
+        request.resource.data.pages is list &&
+        request.resource.data.pages.size() >= 1 &&
+        request.resource.data.pages.size() <= 50;
+
+      allow update: if canWrite() &&
+        request.resource.data.ageRange in ['3-5', '6-8', '9-12'];
+    }
+
+    // Batch progress collection (admin only)
+    match /batchProgress/{batchId} {
+      allow read, write: if canWrite();
+    }
+
+    // User reading history (if implementing user accounts)
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+
+      match /readingHistory/{bookId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+
+      match /favorites/{bookId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+
+    // Analytics (write only by authenticated users, read only by admins)
+    match /analytics/{docId} {
+      allow create: if isAuthenticated();
+      allow read: if isAdmin();
+    }
+  }
+}

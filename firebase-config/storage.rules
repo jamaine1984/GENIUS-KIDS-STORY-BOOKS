@@ -1,0 +1,66 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+
+    function isServiceAccount() {
+      return isAuthenticated() &&
+             request.auth.token.email != null &&
+             request.auth.token.email.matches('.*\\.iam\\.gserviceaccount\\.com$');
+    }
+
+    function canWrite() {
+      return isAdmin() || isServiceAccount();
+    }
+
+    // Book images - publicly readable, admin writable
+    match /images/books/{bookId}/{fileName} {
+      // Anyone can read (public images for books)
+      allow read: if true;
+
+      // Only admins and service accounts can write
+      allow create, update, delete: if canWrite();
+
+      // Validate file type and size
+      allow create: if canWrite() &&
+        request.resource.contentType.matches('image/(png|jpeg|jpg|webp)') &&
+        request.resource.size < 10 * 1024 * 1024; // Max 10MB
+    }
+
+    // Book audio - publicly readable, admin writable
+    match /audio/books/{bookId}/{fileName} {
+      // Anyone can read (public audio for narration)
+      allow read: if true;
+
+      // Only admins and service accounts can write
+      allow create, update, delete: if canWrite();
+
+      // Validate file type and size
+      allow create: if canWrite() &&
+        request.resource.contentType.matches('audio/(wav|mpeg|mp3)') &&
+        request.resource.size < 100 * 1024 * 1024; // Max 100MB for audio
+    }
+
+    // User uploads (if implementing user-generated content)
+    match /users/{userId}/uploads/{fileName} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.auth.uid == userId &&
+        request.resource.size < 5 * 1024 * 1024; // Max 5MB
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

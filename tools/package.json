@@ -1,0 +1,14 @@
+{
+  "name": "genius-kids-book-generator",
+  "version": "1.0.0",
+  "description": "Book generation tools for Genius Kids Story Books",
+  "scripts": {
+    "test": "node generate_test_books.js",
+    "generate": "node generate_test_books.js",
+    "generate:all": "node generate_all_books.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "firebase-admin": "^12.0.0"
+  }
+}
