@@ -9,13 +9,17 @@ class BookPage {
   final String text;
   final String imageUrl;
   final String imageStoragePath;
+  final String audioUrl;
 
   const BookPage({
     required this.pageNumber,
     required this.text,
     required this.imageUrl,
     required this.imageStoragePath,
+    required this.audioUrl,
   });
+
+  bool get hasAudio => audioUrl.isNotEmpty;
 
   factory BookPage.fromMap(Map<String, dynamic> map) {
     return BookPage(
@@ -23,6 +27,7 @@ class BookPage {
       text: map['text'] as String? ?? '',
       imageUrl: map['imageUrl'] as String? ?? '',
       imageStoragePath: map['imageStoragePath'] as String? ?? '',
+      audioUrl: map['audioUrl'] as String? ?? '',
     );
   }
 
@@ -32,6 +37,7 @@ class BookPage {
       'text': text,
       'imageUrl': imageUrl,
       'imageStoragePath': imageStoragePath,
+      'audioUrl': audioUrl,
     };
   }
 }
@@ -146,8 +152,8 @@ class Book {
     this.createdAt,
   });
 
-  /// Check if audio narration is available
-  bool get hasAudio => audio.isReady;
+  /// Check if audio narration is available (book-level or page-level)
+  bool get hasAudio => audio.isReady || pages.any((page) => page.hasAudio);
 
   /// Get estimated reading time in minutes
   int get estimatedReadingMinutes {

@@ -27,10 +27,14 @@ class AudioPlayerService extends ChangeNotifier {
 
   PlaybackState _state = PlaybackState.stopped;
   String? _currentBookId;
+  int _currentPageIndex = 0;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   double _playbackSpeed = 1.0;
   String? _errorMessage;
+
+  // Callback for when page audio completes (for auto-advance)
+  Function(int completedPageIndex)? onPageAudioComplete;
 
   StreamSubscription<PlayerState>? _playerStateSubscription;
   StreamSubscription<Duration>? _positionSubscription;
@@ -43,6 +47,7 @@ class AudioPlayerService extends ChangeNotifier {
   // Getters
   PlaybackState get state => _state;
   String? get currentBookId => _currentBookId;
+  int get currentPageIndex => _currentPageIndex;
   Duration get position => _position;
   Duration get duration => _duration;
   double get playbackSpeed => _playbackSpeed;
@@ -71,6 +76,10 @@ class AudioPlayerService extends ChangeNotifier {
       if (playerState.processingState == ProcessingState.completed) {
         _state = PlaybackState.completed;
         notifyListeners();
+        // Call the callback for auto-advance
+        if (onPageAudioComplete != null) {
+          onPageAudioComplete!(_currentPageIndex);
+        }
       } else if (playerState.processingState == ProcessingState.loading ||
           playerState.processingState == ProcessingState.buffering) {
         _state = PlaybackState.loading;
@@ -132,6 +141,39 @@ class AudioPlayerService extends ChangeNotifier {
         );
       }
 
+      await _player.play();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Could not play the story audio';
+      _state = PlaybackState.error;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Play audio for a specific page
+  Future<bool> playPageAudio(Book book, int pageIndex) async {
+    if (pageIndex < 0 || pageIndex >= book.pages.length) {
+      return false;
+    }
+
+    final page = book.pages[pageIndex];
+    if (page.audioUrl.isEmpty) {
+      _errorMessage = 'Audio is not available for this page';
+      _state = PlaybackState.error;
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      _state = PlaybackState.loading;
+      _currentBookId = book.bookId;
+      _currentPageIndex = pageIndex;
+      _errorMessage = null;
+      notifyListeners();
+
+      // Stream from URL
+      await _player.setUrl(page.audioUrl);
       await _player.play();
       return true;
     } catch (e) {

@@ -22,18 +22,57 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
   late PageController _pageController;
   int _currentPage = 0;
   bool _showControls = true;
+  bool _autoPlayEnabled = true;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
+
+    // Setup auto-advance callback
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final audioService = context.read<AudioPlayerService>();
+      audioService.onPageAudioComplete = _onPageAudioComplete;
+
+      // Auto-play first page
+      if (_autoPlayEnabled && widget.book.hasAudio) {
+        _playCurrentPageAudio();
+      }
+    });
+  }
+
+  void _onPageAudioComplete(int completedPageIndex) {
+    // Auto-advance to next page when audio finishes
+    if (_autoPlayEnabled && completedPageIndex == _currentPage) {
+      if (_currentPage < widget.book.pages.length - 1) {
+        // Small delay before turning page
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted) {
+            _nextPage();
+            // Play next page audio after page turn
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted && _autoPlayEnabled) {
+                _playCurrentPageAudio();
+              }
+            });
+          }
+        });
+      }
+    }
+  }
+
+  void _playCurrentPageAudio() {
+    final audioService = context.read<AudioPlayerService>();
+    audioService.playPageAudio(widget.book, _currentPage);
   }
 
   @override
   void dispose() {
+    // Clear callback and stop audio when leaving
+    final audioService = context.read<AudioPlayerService>();
+    audioService.onPageAudioComplete = null;
+    audioService.stop();
     _pageController.dispose();
-    // Stop audio when leaving the screen
-    context.read<AudioPlayerService>().stop();
     super.dispose();
   }
 
@@ -77,6 +116,10 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
                 controller: _pageController,
                 onPageChanged: (page) {
                   setState(() => _currentPage = page);
+                  // Play audio for the new page when manually swiping
+                  if (_autoPlayEnabled && widget.book.hasAudio) {
+                    _playCurrentPageAudio();
+                  }
                 },
                 itemCount: widget.book.pages.length,
                 itemBuilder: (context, index) {
@@ -180,7 +223,16 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Audio player
-                    if (widget.book.hasAudio) _AudioPlayerWidget(book: widget.book),
+                    if (widget.book.hasAudio)
+                      _AudioPlayerWidget(
+                        book: widget.book,
+                        currentPage: _currentPage,
+                        autoPlayEnabled: _autoPlayEnabled,
+                        onAutoPlayToggle: () {
+                          setState(() => _autoPlayEnabled = !_autoPlayEnabled);
+                        },
+                        onPlayPage: _playCurrentPageAudio,
+                      ),
 
                     const SizedBox(height: 16),
 
@@ -293,16 +345,27 @@ class _BookPage extends StatelessWidget {
 /// Audio player widget
 class _AudioPlayerWidget extends StatelessWidget {
   final Book book;
+  final int currentPage;
+  final bool autoPlayEnabled;
+  final VoidCallback onAutoPlayToggle;
+  final VoidCallback onPlayPage;
 
-  const _AudioPlayerWidget({required this.book});
+  const _AudioPlayerWidget({
+    required this.book,
+    required this.currentPage,
+    required this.autoPlayEnabled,
+    required this.onAutoPlayToggle,
+    required this.onPlayPage,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Consumer<AudioPlayerService>(
       builder: (context, audioService, child) {
         final isCurrentBook = audioService.currentBookId == book.bookId;
-        final isPlaying = isCurrentBook && audioService.isPlaying;
-        final isLoading = isCurrentBook && audioService.isLoading;
+        final isCurrentPage = isCurrentBook && audioService.currentPageIndex == currentPage;
+        final isPlaying = isCurrentPage && audioService.isPlaying;
+        final isLoading = isCurrentPage && audioService.isLoading;
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -319,10 +382,10 @@ class _AudioPlayerWidget extends StatelessWidget {
 
                   if (isPlaying) {
                     await audioService.pause();
-                  } else if (isCurrentBook) {
+                  } else if (isCurrentPage && audioService.isPaused) {
                     await audioService.resume();
                   } else {
-                    await audioService.playBook(book);
+                    onPlayPage();
                   }
                 },
                 child: Container(
@@ -359,16 +422,16 @@ class _AudioPlayerWidget extends StatelessWidget {
 
               const SizedBox(width: 16),
 
-              // Progress bar and time
+              // Progress bar and info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Label
+                    // Label with page info
                     Text(
                       isPlaying
-                          ? 'Playing story...'
-                          : 'Listen to the story',
+                          ? 'Reading page ${currentPage + 1}...'
+                          : 'Tap to read this page',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -378,7 +441,7 @@ class _AudioPlayerWidget extends StatelessWidget {
                     const SizedBox(height: 8),
 
                     // Progress bar
-                    if (isCurrentBook)
+                    if (isCurrentPage)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
@@ -403,7 +466,7 @@ class _AudioPlayerWidget extends StatelessWidget {
                     const SizedBox(height: 4),
 
                     // Time
-                    if (isCurrentBook)
+                    if (isCurrentPage)
                       Text(
                         '${audioService.positionString} / ${audioService.durationString}',
                         style: TextStyle(
@@ -415,16 +478,37 @@ class _AudioPlayerWidget extends StatelessWidget {
                 ),
               ),
 
-              // Stop button
-              if (isCurrentBook && (isPlaying || audioService.isPaused))
-                IconButton(
-                  onPressed: () => audioService.stop(),
-                  icon: const Icon(
-                    Icons.stop_rounded,
-                    color: Colors.white,
-                    size: 28,
+              // Auto-play toggle
+              GestureDetector(
+                onTap: onAutoPlayToggle,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: autoPlayEnabled
+                        ? AppConstants.accentColor.withOpacity(0.3)
+                        : Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        autoPlayEnabled ? Icons.auto_stories : Icons.auto_stories_outlined,
+                        color: autoPlayEnabled ? AppConstants.accentColor : Colors.white,
+                        size: 24,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Auto',
+                        style: TextStyle(
+                          color: autoPlayEnabled ? AppConstants.accentColor : Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
             ],
           ),
         );
