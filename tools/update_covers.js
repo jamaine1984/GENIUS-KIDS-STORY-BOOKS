@@ -48,7 +48,7 @@ Requirements:
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-04-17" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
       const result = await model.generateContent({
         contents: [{
           role: 'user',
@@ -102,6 +102,17 @@ async function updateAllCovers() {
     console.log(`[${i + 1}/${books.length}] ${book.title}`);
     console.log(`   Theme: ${book.theme} | Age: ${book.ageRange}`);
 
+    // Skip if already has a cover from this run (check if cover.png or cover.jpg exists)
+    if (book.coverImageUrl && (book.coverImageUrl.includes('/cover.png') || book.coverImageUrl.includes('/cover.jpg') || book.coverImageUrl.includes('/cover.jpeg'))) {
+      console.log(`   ⏭️  Already has unique cover, skipping`);
+      updated++;
+      await sleep(500); // Small delay
+      if ((i + 1) % 10 === 0) {
+        console.log(`\n📊 Progress: ${i + 1}/${books.length} | ✅ ${updated} | ❌ ${failed}\n`);
+      }
+      continue;
+    }
+
     try {
       // Generate new cover image
       const coverResult = await generateCoverImage(
@@ -133,8 +144,8 @@ async function updateAllCovers() {
       failed++;
     }
 
-    // Rate limiting
-    await sleep(1000);
+    // Rate limiting - 7 seconds to stay under 10 requests/minute
+    await sleep(7000);
 
     // Progress update
     if ((i + 1) % 10 === 0) {
