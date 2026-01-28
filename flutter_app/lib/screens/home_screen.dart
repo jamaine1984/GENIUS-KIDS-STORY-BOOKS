@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/book_service.dart';
 import '../services/subscription_service.dart';
 import '../models/book.dart';
+import '../models/subscription.dart';
 import '../main.dart';
 import 'book_reader_screen.dart';
 import 'parental_settings_screen.dart';
@@ -86,9 +87,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final subscription = subscriptionService.subscription;
 
     String message;
-    if (subscription.tier.displayName == 'Free') {
+    if (subscription.tier == SubscriptionTier.free) {
       message = 'You\'ve used your free book! Subscribe to keep reading amazing stories.';
-    } else if (subscription.tier.displayName == 'Basic') {
+    } else if (subscription.tier == SubscriptionTier.basic) {
       message = 'You\'ve reached your 100 book limit for this month! Upgrade to Unlimited to keep reading.';
     } else {
       message = 'Subscribe to read unlimited books!';
@@ -236,7 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
 
                   final subscription = subscriptionService.subscription;
-                  final isUnlimited = subscription.tier.displayName == 'Unlimited';
+                  final isUnlimited = subscription.tier == SubscriptionTier.unlimited;
 
                   return IconButton(
                     onPressed: () {
@@ -283,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
               String message;
               Color backgroundColor;
 
-              if (subscription.tier.displayName == 'Free') {
+              if (subscription.tier == SubscriptionTier.free) {
                 message = remainingBooks > 0
                     ? '📖 $remainingBooks free book available'
                     : '✨ Subscribe to read unlimited stories!';
