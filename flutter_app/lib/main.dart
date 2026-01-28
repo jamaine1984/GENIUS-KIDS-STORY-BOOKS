@@ -19,6 +19,7 @@ import 'firebase_options.dart';
 import 'services/audio_player_service.dart';
 import 'services/book_service.dart';
 import 'services/audio_cache_service.dart';
+import 'services/subscription_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/splash_screen.dart';
 
@@ -57,6 +58,15 @@ class KidsStorybookApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Subscription service
+        ChangeNotifierProvider<SubscriptionService>(
+          create: (_) {
+            final service = SubscriptionService();
+            service.initialize();
+            return service;
+          },
+        ),
+
         // Book service
         Provider<BookService>(
           create: (_) => BookService(),

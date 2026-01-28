@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/book_service.dart';
+import '../services/subscription_service.dart';
 import '../models/book.dart';
 import '../main.dart';
 import 'book_reader_screen.dart';
 import 'parental_settings_screen.dart';
+import 'subscription_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -51,10 +53,93 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadBooks();
   }
 
-  void _openBook(Book book) {
-    Navigator.of(context).push(
+  void _openBook(Book book) async {
+    final subscriptionService = context.read<SubscriptionService>();
+
+    // Check if user can read this book
+    if (!subscriptionService.canReadBook()) {
+      // Show paywall
+      _showSubscriptionPaywall();
+      return;
+    }
+
+    // Open the book
+    final result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => BookReaderScreen(book: book),
+      ),
+    );
+
+    // If book was completed, increment counter and show upgrade prompt if needed
+    if (result == true && mounted) {
+      await subscriptionService.incrementBooksRead();
+
+      final upgradeMessage = subscriptionService.getUpgradeMessage();
+      if (upgradeMessage != null && mounted) {
+        _showUpgradePrompt(upgradeMessage);
+      }
+    }
+  }
+
+  void _showSubscriptionPaywall() {
+    final subscriptionService = context.read<SubscriptionService>();
+    final subscription = subscriptionService.subscription;
+
+    String message;
+    if (subscription.tier.displayName == 'Free') {
+      message = 'You\'ve used your free book! Subscribe to keep reading amazing stories.';
+    } else if (subscription.tier.displayName == 'Basic') {
+      message = 'You\'ve reached your 100 book limit for this month! Upgrade to Unlimited to keep reading.';
+    } else {
+      message = 'Subscribe to read unlimited books!';
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Text('Subscription Required'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Maybe Later'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const SubscriptionScreen(showCloseButton: true),
+                ),
+              );
+            },
+            child: const Text('Subscribe Now'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUpgradePrompt(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          label: 'Upgrade',
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const SubscriptionScreen(showCloseButton: true),
+              ),
+            );
+          },
+        ),
+        duration: const Duration(seconds: 5),
+        backgroundColor: Colors.orange,
       ),
     );
   }
@@ -119,33 +204,136 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.all(AppConstants.paddingMedium),
-      child: Row(
+      child: Column(
         children: [
-          // App title
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '📚 Genius Kids',
-                  style: Theme.of(context).textTheme.headlineLarge,
+          Row(
+            children: [
+              // App title
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '📚 Genius Kids',
+                      style: Theme.of(context).textTheme.headlineLarge,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Choose a story to read!',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Choose a story to read!',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey[600],
-                      ),
-                ),
-              ],
-            ),
+              ),
+
+              // Subscription button
+              Consumer<SubscriptionService>(
+                builder: (context, subscriptionService, child) {
+                  if (!subscriptionService.isInitialized) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final subscription = subscriptionService.subscription;
+                  final isUnlimited = subscription.tier.displayName == 'Unlimited';
+
+                  return IconButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const SubscriptionScreen(showCloseButton: true),
+                        ),
+                      );
+                    },
+                    icon: Icon(
+                      isUnlimited ? Icons.stars : Icons.workspace_premium,
+                      size: 28,
+                      color: isUnlimited ? Colors.amber : AppConstants.primaryColor,
+                    ),
+                    tooltip: 'Subscription',
+                  );
+                },
+              ),
+
+              // Parental settings button (hidden from kids)
+              IconButton(
+                onPressed: _openParentalSettings,
+                icon: const Icon(Icons.settings, size: 28),
+                tooltip: 'Settings',
+              ),
+            ],
           ),
 
-          // Parental settings button (hidden from kids)
-          IconButton(
-            onPressed: _openParentalSettings,
-            icon: const Icon(Icons.settings, size: 28),
-            tooltip: 'Settings',
+          // Subscription status banner
+          Consumer<SubscriptionService>(
+            builder: (context, subscriptionService, child) {
+              if (!subscriptionService.isInitialized) {
+                return const SizedBox.shrink();
+              }
+
+              final subscription = subscriptionService.subscription;
+              final remainingBooks = subscription.remainingBooks;
+
+              // Don't show for unlimited users
+              if (remainingBooks == -1) {
+                return const SizedBox.shrink();
+              }
+
+              String message;
+              Color backgroundColor;
+
+              if (subscription.tier.displayName == 'Free') {
+                message = remainingBooks > 0
+                    ? '📖 $remainingBooks free book available'
+                    : '✨ Subscribe to read unlimited stories!';
+                backgroundColor = remainingBooks > 0 ? Colors.blue : Colors.orange;
+              } else {
+                message = '$remainingBooks of 100 books left this month';
+                backgroundColor = remainingBooks < 20 ? Colors.orange : Colors.green;
+              }
+
+              return Container(
+                margin: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: backgroundColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: backgroundColor.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        message,
+                        style: TextStyle(
+                          color: backgroundColor.withOpacity(0.9),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (remainingBooks <= 0 || (remainingBooks < 20 && remainingBooks != -1))
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const SubscriptionScreen(showCloseButton: true),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          remainingBooks <= 0 ? 'Subscribe' : 'Upgrade',
+                          style: TextStyle(
+                            color: backgroundColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),

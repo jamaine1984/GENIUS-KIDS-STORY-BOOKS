@@ -23,6 +23,7 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
   int _currentPage = 0;
   bool _showControls = true;
   bool _autoPlayEnabled = true;
+  bool _bookCompleted = false;
 
   @override
   void initState() {
@@ -84,6 +85,11 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
         curve: Curves.easeInOut,
       );
     }
+
+    // Mark book as completed when user reaches the last page
+    if (page == widget.book.pages.length - 1 && !_bookCompleted) {
+      _bookCompleted = true;
+    }
   }
 
   void _nextPage() {
@@ -120,6 +126,10 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
                   if (_autoPlayEnabled && widget.book.hasAudio) {
                     _playCurrentPageAudio();
                   }
+                  // Mark book as completed when user reaches the last page
+                  if (page == widget.book.pages.length - 1 && !_bookCompleted) {
+                    _bookCompleted = true;
+                  }
                 },
                 itemCount: widget.book.pages.length,
                 itemBuilder: (context, index) {
@@ -154,7 +164,7 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
                   children: [
                     // Back button
                     IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: () => Navigator.of(context).pop(_bookCompleted),
                       icon: const Icon(
                         Icons.arrow_back_rounded,
                         color: Colors.white,
