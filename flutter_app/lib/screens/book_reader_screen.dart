@@ -24,6 +24,7 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
   bool _showControls = true;
   bool _autoPlayEnabled = true;
   bool _bookCompleted = false;
+  AudioPlayerService? _audioService;
 
   @override
   void initState() {
@@ -32,8 +33,8 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
 
     // Setup auto-advance callback
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final audioService = context.read<AudioPlayerService>();
-      audioService.onPageAudioComplete = _onPageAudioComplete;
+      _audioService = context.read<AudioPlayerService>();
+      _audioService!.onPageAudioComplete = _onPageAudioComplete;
 
       // Auto-play first page
       if (_autoPlayEnabled && widget.book.hasAudio) {
@@ -70,9 +71,10 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
   @override
   void dispose() {
     // Clear callback and stop audio when leaving
-    final audioService = context.read<AudioPlayerService>();
-    audioService.onPageAudioComplete = null;
-    audioService.stop();
+    if (_audioService != null) {
+      _audioService!.onPageAudioComplete = null;
+      _audioService!.stop();
+    }
     _pageController.dispose();
     super.dispose();
   }
