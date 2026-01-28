@@ -22,7 +22,7 @@ const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
 // Google AI
-const GOOGLE_API_KEY = 'AIzaSyBcv2nBXJ_EdoCwfWT_CatCEI7rRdJZlmE';
+const GOOGLE_API_KEY = 'AIzaSyAtaLYBku6EmcnFp8puSL8tGtqwgHw22Uk';
 const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
 
 // Generate cover image
